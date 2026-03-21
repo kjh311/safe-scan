@@ -8,54 +8,37 @@ class ViewfinderOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Define viewfinder dimensions (vertical rectangle)
-        final double viewfinderWidth = constraints.maxWidth * 0.7;
-        final double viewfinderHeight = viewfinderWidth * 1.5; // Vertical ratio
+        // Viewfinder size logic
+        final double viewfinderWidth = constraints.maxWidth * 0.85;
+        final double viewfinderHeight = constraints.maxHeight * 0.9;
         final Size viewfinderSize = Size(viewfinderWidth, viewfinderHeight);
 
-        return Stack(
-          children: [
-            // Scrim / Background overlay with a hole
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(
-                Colors.black.withOpacity(0.6),
-                BlendMode.srcOut,
-              ),
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                      backgroundBlendMode: BlendMode.dstOut,
-                    ),
+        return Center(
+          child: SizedBox(
+            width: viewfinderSize.width,
+            height: viewfinderSize.height,
+            child: Stack(
+              children: [
+                // Semi-transparent inner area
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  Align(
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: viewfinderSize.width,
-                      height: viewfinderSize.height,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Custom Painter for Brackets
-            Align(
-              alignment: Alignment.center,
-              child: CustomPaint(
-                size: viewfinderSize,
-                painter: ViewfinderPainter(
-                  color: AppColors.tertiary,
-                  strokeWidth: 4.0,
-                  bracketLength: 24.0,
                 ),
-              ),
+                
+                // L-Brackets Painter
+                CustomPaint(
+                  size: viewfinderSize,
+                  painter: ViewfinderPainter(
+                    color: AppColors.primary,
+                    strokeWidth: 2.5,
+                    bracketLength: 32.0,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );

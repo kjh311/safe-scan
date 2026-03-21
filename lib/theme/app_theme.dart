@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  static const Color primary = Color(0xFF8EFF71); // Bio-Green
-  static const Color secondary = Color(0xFFFF7354); // Safety Orange
-  static const Color tertiary = Color(0xFF00E5FF); // Precision Blue
-  static const Color surface = Color(0xFF0E0E0E);
-  static const Color surfaceContainerLow = Color(0xFF131313);
-  static const Color surfaceContainerHigh = Color(0xFF20201F);
+  static const Color primary = Color(0xFF00B2FF); // Precision Blue
+  static const Color surface = Color(0xFF121212); // Deep Charcoal
+  static const Color surfaceContainerLow = Color(0xFF1A1A1A);
+  static const Color surfaceContainerHigh = Color(0xFF262626);
   static const Color onSurface = Colors.white;
   static const Color onSurfaceVariant = Color(0xFFADAAAA);
-  static const Color errorContainer = Color(0xFFB92902);
+  static const Color glassOverlay = Color(0xCC121212); // 80% Opacity Deep Charcoal
 }
 
 class AppTheme {
@@ -19,11 +17,8 @@ class AppTheme {
     brightness: Brightness.dark,
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primary,
-      secondary: AppColors.secondary,
-      tertiary: AppColors.tertiary,
       surface: AppColors.surface,
       onSurface: AppColors.onSurface,
-      errorContainer: AppColors.errorContainer,
     ),
     scaffoldBackgroundColor: AppColors.surface,
     textTheme: TextTheme(
