@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/ocr_service.dart';
+import '../services/barcode_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/scanner_view.dart';
 import '../widgets/results_view.dart';
@@ -21,7 +22,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   CameraController? _nativeController;
   final OcrService _ocrService = OcrService();
+  final BarcodeService _barcodeService = BarcodeService();
   List<IngredientResult> _ingredientResults = [];
+  
+  // Barcode detection state
+  DetectedBarcode? _detectedBarcode;
+  bool _isBarcodeProcessing = false;
 
   @override
   void initState() {
@@ -73,7 +79,41 @@ class _ScannerScreenState extends State<ScannerScreen> {
   void dispose() {
     _nativeController?.dispose();
     _ocrService.dispose();
+    _barcodeService.dispose();
     super.dispose();
+  }
+
+  /// Continuously scan for barcodes while on scanner view
+  Future<void> _scanForBarcodes() async {
+    if (_isBarcodeProcessing || !_isCameraReady || _showResults) return;
+    if (_nativeController == null || !_nativeController!.value.isInitialized) return;
+
+    _isBarcodeProcessing = true;
+    try {
+      final image = await _nativeController!.takePicture();
+      final barcode = await _barcodeService.processImage(image);
+
+      if (mounted && barcode != null && barcode.rawValue.isNotEmpty) {
+        setState(() {
+          _detectedBarcode = barcode;
+        });
+        
+        // Fetch product data from OpenFoodFacts
+        final product = await _barcodeService.fetchProduct(barcode.rawValue);
+        if (mounted && product != null && product.ingredients.isNotEmpty) {
+          // Classify ingredients with OCR service
+          final results = _ocrService.classifyIngredients(product.ingredients);
+          setState(() {
+            _ingredientResults = results;
+            _showResults = true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Barcode scan error: $e');
+    } finally {
+      _isBarcodeProcessing = false;
+    }
   }
 
   void _toggleView() {
@@ -85,8 +125,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _onSnap() async {
     if (!_isCameraReady || _nativeController == null || !_nativeController!.value.isInitialized) {
       debugPrint('[FALLBACK] Camera not ready — using mock data.');
+      final rawResults = _ocrService.getMockResults();
+      final results = rawResults.map((m) => IngredientResult(
+        name: m['name'] as String,
+        isHazardous: m['severity'] != 'green',
+        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
+      )).toList();
+      
       setState(() {
-        _ingredientResults = _ocrService.getMockResults();
+        _ingredientResults = results;
         _showResults = true;
       });
       return;
@@ -96,17 +143,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
       final image = await _nativeController!.takePicture();
       debugPrint('Frame captured: ${image.path}');
       
-      List<IngredientResult> results;
+      List<Map<String, dynamic>> rawResults;
       if (kIsWeb) {
-        // TODO: Implement web OCR using Tesseract.js or similar
-        // ML Kit text recognition is not available on web.
-        // See: https://github.com/a14n/dart-google-mlkit/issues/85
         debugPrint('[WEB] OCR not yet implemented — using mock data.');
-        results = _ocrService.getMockResults();
+        rawResults = _ocrService.getMockResults();
       } else {
-        // Native: use ML Kit OCR
-        results = await _ocrService.processImage(image.path);
+        rawResults = await _ocrService.processImage(image.path);
       }
+
+      final results = rawResults.map((m) => IngredientResult(
+        name: m['name'] as String,
+        isHazardous: m['severity'] != 'green',
+        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
+      )).toList();
 
       setState(() {
         _ingredientResults = results;
@@ -114,14 +163,28 @@ class _ScannerScreenState extends State<ScannerScreen> {
       });
     } on CameraException catch (e) {
       debugPrint('Capture error: ${e.code} — ${e.description}');
+      final rawResults = _ocrService.getMockResults();
+      final results = rawResults.map((m) => IngredientResult(
+        name: m['name'] as String,
+        isHazardous: m['severity'] != 'green',
+        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
+      )).toList();
+      
       setState(() {
-        _ingredientResults = _ocrService.getMockResults();
+        _ingredientResults = results;
         _showResults = true;
       });
     } catch (e) {
       debugPrint('Snap error: $e');
+      final rawResults = _ocrService.getMockResults();
+      final results = rawResults.map((m) => IngredientResult(
+        name: m['name'] as String,
+        isHazardous: m['severity'] != 'green',
+        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
+      )).toList();
+      
       setState(() {
-        _ingredientResults = _ocrService.getMockResults();
+        _ingredientResults = results;
         _showResults = true;
       });
     }
@@ -147,9 +210,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 : ScannerView(
                     key: const ValueKey('scanner'),
                     onScanComplete: _onSnap,
+                    onResult: (results) {
+                      setState(() {
+                        _ingredientResults = results;
+                        _showResults = true;
+                      });
+                    },
                     controller: _nativeController,
                     isInitializing: _isInitializing,
                     isCameraReady: _isCameraReady,
+                    detectedBarcode: _detectedBarcode,
+                    onBarcodeScanned: _scanForBarcodes,
                   ),
           ),
 

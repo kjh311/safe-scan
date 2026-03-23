@@ -1,21 +1,131 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import '../theme/app_theme.dart';
+import '../services/barcode_service.dart';
+import '../services/ocr_service.dart';
 import 'viewfinder_overlay.dart';
 
-class ScannerView extends StatelessWidget {
+class ScannerView extends StatefulWidget {
   final VoidCallback onScanComplete;
+  final Function(List<IngredientResult>) onResult;
   final CameraController? controller;
   final bool isInitializing;
   final bool isCameraReady;
+  final DetectedBarcode? detectedBarcode;
+  final VoidCallback? onBarcodeScanned;
 
   const ScannerView({
     super.key, 
     required this.onScanComplete,
+    required this.onResult,
     this.controller,
     this.isInitializing = false,
     this.isCameraReady = false,
+    this.detectedBarcode,
+    this.onBarcodeScanned,
   });
+
+  @override
+  State<ScannerView> createState() => _ScannerViewState();
+}
+
+class _ScannerViewState extends State<ScannerView> {
+  Timer? _scanTimer;
+  final BarcodeScanner _barcodeScanner = BarcodeScanner(formats: [BarcodeFormat.all]);
+  bool _isProcessing = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _startContinuousScanning();
+  }
+
+  @override
+  void dispose() {
+    _scanTimer?.cancel();
+    _barcodeScanner.close();
+    if (widget.controller != null && widget.controller!.value.isStreamingImages) {
+      widget.controller!.stopImageStream();
+    }
+    super.dispose();
+  }
+
+  void _startContinuousScanning() {
+    // If controller is ready, use image stream for better performance
+    if (widget.isCameraReady && widget.controller != null && !widget.isInitializing) {
+      if (!widget.controller!.value.isStreamingImages) {
+        widget.controller!.startImageStream(_processCameraImage);
+      }
+    }
+
+    // Keep the timer for any other periodic tasks or fallback
+    _scanTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (widget.isCameraReady && !widget.isInitializing) {
+        widget.onBarcodeScanned?.call();
+      }
+    });
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
+    if (_isProcessing) return;
+    _isProcessing = true;
+
+    try {
+      final inputImage = _inputImageFromCameraImage(image);
+      if (inputImage == null) return;
+      
+      final barcodes = await _barcodeScanner.processImage(inputImage);
+      
+      if (barcodes.isNotEmpty && mounted) {
+        final barcode = barcodes.first;
+        if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
+          // 1. Trigger haptic feedback
+          await HapticFeedback.lightImpact();
+          
+          // 2. Fetch product data
+          final product = await BarcodeService().fetchProduct(barcode.rawValue!);
+          
+          if (product != null && product.ingredients.isNotEmpty && mounted) {
+            // 3. Classify ingredients and navigate (via callback)
+            final results = OcrService().classifyIngredients(product.ingredients);
+            widget.onResult(results);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Barcode stream error: $e');
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
+    if (widget.controller == null) return null;
+
+    final camera = widget.controller!.description;
+    final sensorOrientation = camera.sensorOrientation;
+    final rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    if (rotation == null) return null;
+
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format == null) return null;
+
+    if (image.planes.isEmpty) return null;
+    final plane = image.planes.first;
+
+    return InputImage.fromBytes(
+      bytes: plane.bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: plane.bytesPerRow,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,11 +149,11 @@ class ScannerView extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             // 1. Base Layer: Camera Feed - fills entire screen without zoom
-            if (isCameraReady && controller != null && controller!.value.isInitialized)
+            if (widget.isCameraReady && widget.controller != null && widget.controller!.value.isInitialized)
               Positioned.fill(
-                child: CameraPreview(controller!),
+                child: CameraPreview(widget.controller!),
               )
-            else if (!isCameraReady && !isInitializing)
+            else if (!widget.isCameraReady && !widget.isInitializing)
               Container(
                 color: Colors.black,
                 child: Center(
@@ -158,6 +268,60 @@ class ScannerView extends StatelessWidget {
               child: const ViewfinderOverlay(),
             ),
 
+            // 5b. Barcode detection overlay - blue circle on detected barcode
+            if (widget.detectedBarcode != null)
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final barcode = widget.detectedBarcode!;
+                    // Convert normalized coordinates to screen coordinates
+                    final box = barcode.boundingBox;
+                    final left = box.left * constraints.maxWidth;
+                    final top = box.top * constraints.maxHeight;
+                    final width = box.width * constraints.maxWidth;
+                    final height = box.height * constraints.maxHeight;
+                    
+                    return Stack(
+                      children: [
+                        Positioned(
+                          left: left,
+                          top: top,
+                          width: width,
+                          height: height,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.blue,
+                                width: 3,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        // Small blue circle indicator
+                        Positioned(
+                          left: left + width / 2 - 12,
+                          top: top - 24,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: const BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+
             // 6. Capture Button: Region 68% to 83%
             Positioned(
               top: screenHeight * 0.68,
@@ -166,7 +330,7 @@ class ScannerView extends StatelessWidget {
               height: screenHeight * 0.15,
               child: Center(
                 child: GestureDetector(
-                  onTap: onScanComplete,
+                  onTap: widget.onScanComplete,
                   child: Container(
                     height: 64,
                     width: double.infinity,
@@ -207,7 +371,7 @@ class ScannerView extends StatelessWidget {
             ),
             
             // Loading indicator
-            if (isInitializing)
+            if (widget.isInitializing)
               const Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               ),
@@ -216,4 +380,5 @@ class ScannerView extends StatelessWidget {
       },
     );
   }
+
 }

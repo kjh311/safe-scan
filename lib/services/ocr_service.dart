@@ -111,7 +111,7 @@ class OcrService {
   }
 
   /// Processes the given image path and returns classified ingredients.
-  Future<List<IngredientResult>> processImage(String imagePath) async {
+  Future<List<Map<String, dynamic>>> processImage(String imagePath) async {
     try {
       final inputImage = InputImage.fromFilePath(imagePath);
       final RecognizedText recognizedText =
@@ -137,13 +137,22 @@ class OcrService {
   }
 
   /// Returns mock results for web/no-camera environments.
-  List<IngredientResult> getMockResults() {
+  List<Map<String, dynamic>> getMockResults() {
     debugPrint('[MOCK] Using mock ingredient list.');
     return _classifyIngredients(List.from(_mockIngredients));
   }
 
+  /// Temporary classification logic for UI testing.
+  List<Map<String, dynamic>> _classifyIngredients(List<String> ingredients) {
+    return ingredients.map((name) => {
+      'name': name,
+      'severity': 'green',
+      'reason': 'Safe',
+    }).toList();
+  }
+
   /// Classifies a list of ingredient names against the known hazard map.
-  List<IngredientResult> _classifyIngredients(List<String> ingredients) {
+  List<IngredientResult> classifyIngredients(List<String> ingredients) {
     return ingredients.map((name) {
       final lower = name.toLowerCase().trim();
       String? hazardLabel;
