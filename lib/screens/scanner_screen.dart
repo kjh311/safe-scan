@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../services/ocr_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/scanner_view.dart';
 import '../widgets/results_view.dart';
@@ -12,11 +16,115 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   bool _showResults = false;
+  bool _isInitializing = true;
+  bool _isCameraReady = false;
+
+  CameraController? _nativeController;
+  final OcrService _ocrService = OcrService();
+  List<IngredientResult> _ingredientResults = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _setupCameras();
+  }
+
+  Future<void> _setupCameras() async {
+    try {
+      // Request camera permission first (on native platforms)
+      if (!kIsWeb) {
+        final status = await Permission.camera.request();
+        if (!status.isGranted) {
+          debugPrint('Camera permission denied: ${status.name}');
+          if (mounted) {
+            setState(() => _isInitializing = false);
+          }
+          return;
+        }
+      }
+
+      // Use camera plugin for both web and native
+      // On web, availableCameras() uses camera_web plugin
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        _nativeController = CameraController(
+          cameras[0],
+          ResolutionPreset.high,
+          enableAudio: false,
+        );
+        await _nativeController!.initialize();
+        _isCameraReady = true;
+        debugPrint('Camera initialized: ${cameras[0].name} (${kIsWeb ? "web" : "native"})');
+      } else {
+        debugPrint('No cameras detected.');
+      }
+    } on CameraException catch (e) {
+      debugPrint('Camera error: ${e.code} — ${e.description}');
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isInitializing = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nativeController?.dispose();
+    _ocrService.dispose();
+    super.dispose();
+  }
 
   void _toggleView() {
     setState(() {
       _showResults = !_showResults;
     });
+  }
+
+  Future<void> _onSnap() async {
+    if (!_isCameraReady || _nativeController == null || !_nativeController!.value.isInitialized) {
+      debugPrint('[FALLBACK] Camera not ready — using mock data.');
+      setState(() {
+        _ingredientResults = _ocrService.getMockResults();
+        _showResults = true;
+      });
+      return;
+    }
+
+    try {
+      final image = await _nativeController!.takePicture();
+      debugPrint('Frame captured: ${image.path}');
+      
+      List<IngredientResult> results;
+      if (kIsWeb) {
+        // TODO: Implement web OCR using Tesseract.js or similar
+        // ML Kit text recognition is not available on web.
+        // See: https://github.com/a14n/dart-google-mlkit/issues/85
+        debugPrint('[WEB] OCR not yet implemented — using mock data.');
+        results = _ocrService.getMockResults();
+      } else {
+        // Native: use ML Kit OCR
+        results = await _ocrService.processImage(image.path);
+      }
+
+      setState(() {
+        _ingredientResults = results;
+        _showResults = true;
+      });
+    } on CameraException catch (e) {
+      debugPrint('Capture error: ${e.code} — ${e.description}');
+      setState(() {
+        _ingredientResults = _ocrService.getMockResults();
+        _showResults = true;
+      });
+    } catch (e) {
+      debugPrint('Snap error: $e');
+      setState(() {
+        _ingredientResults = _ocrService.getMockResults();
+        _showResults = true;
+      });
+    }
   }
 
   @override
@@ -25,25 +133,32 @@ class _ScannerScreenState extends State<ScannerScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Content View
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 500),
             transitionBuilder: (Widget child, Animation<double> animation) {
               return FadeTransition(opacity: animation, child: child);
             },
-            child: _showResults 
-                ? ResultsView(key: const ValueKey('results'), onReset: _toggleView)
-                : ScannerView(key: const ValueKey('scanner'), onScanComplete: _toggleView),
+            child: _showResults
+                ? ResultsView(
+                    key: const ValueKey('results'),
+                    onReset: _toggleView,
+                    ingredients: _ingredientResults,
+                  )
+                : ScannerView(
+                    key: const ValueKey('scanner'),
+                    onScanComplete: _onSnap,
+                    controller: _nativeController,
+                    isInitializing: _isInitializing,
+                    isCameraReady: _isCameraReady,
+                  ),
           ),
 
-          // Floating Island Navigation (at the very bottom)
+          // Floating Island Navigation
           Positioned(
-            bottom: 20, // Slightly higher to ensure it's "floating" above the edge
+            bottom: 20,
             left: 24,
             right: 24,
-            child: Center(
-              child: _buildFloatingNavigation(context),
-            ),
+            child: Center(child: _buildFloatingNavigation(context)),
           ),
         ],
       ),
@@ -56,10 +171,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF161616),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

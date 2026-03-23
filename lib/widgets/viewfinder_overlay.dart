@@ -17,26 +17,13 @@ class ViewfinderOverlay extends StatelessWidget {
           child: SizedBox(
             width: viewfinderSize.width,
             height: viewfinderSize.height,
-            child: Stack(
-              children: [
-                // Semi-transparent inner area
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                
-                // L-Brackets Painter
-                CustomPaint(
-                  size: viewfinderSize,
-                  painter: ViewfinderPainter(
-                    color: AppColors.primary,
-                    strokeWidth: 2.5,
-                    bracketLength: 32.0,
-                  ),
-                ),
-              ],
+            child: CustomPaint(
+              size: viewfinderSize,
+              painter: ViewfinderPainter(
+                color: AppColors.primary,
+                strokeWidth: 2.5,
+                bracketLength: 32.0,
+              ),
             ),
           ),
         );

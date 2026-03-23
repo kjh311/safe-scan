@@ -1,13 +1,28 @@
 import 'package:flutter/material.dart';
+import '../services/ocr_service.dart';
 import '../theme/app_theme.dart';
 
 class ResultsView extends StatelessWidget {
   final VoidCallback onReset;
+  final List<IngredientResult> ingredients;
 
-  const ResultsView({super.key, required this.onReset});
+  const ResultsView({
+    super.key,
+    required this.onReset,
+    required this.ingredients,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hazardCount = ingredients.where((i) => i.isHazardous).length;
+    final safeCount = ingredients.length - hazardCount;
+    final safePercent = ingredients.isEmpty
+        ? 100
+        : ((safeCount / ingredients.length) * 100).round();
+
+    final overallColor = hazardCount == 0 ? AppColors.primary : Colors.redAccent;
+    final overallLabel = hazardCount == 0 ? 'SAFE' : 'HAZARD DETECTED';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 80, 24, 150),
       child: Column(
@@ -18,61 +33,77 @@ class ResultsView extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "SCAN COMPLETE",
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: AppColors.primary,
-                      letterSpacing: 2,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "SCAN COMPLETE",
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: overallColor,
+                        letterSpacing: 2,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Almond Milk",
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontSize: 36,
-                      height: 1.1,
+                    const SizedBox(height: 8),
+                    Text(
+                      "Analysis Report",
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontSize: 28,
+                        height: 1.1,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: overallColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  border: Border.all(color: overallColor.withValues(alpha: 0.3)),
                 ),
                 child: Text(
-                  "98% SAFE",
+                  '$safePercent%\n$overallLabel',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: overallColor,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 14,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 48),
-
-          // Diagnostic Grid
-          _buildSectionHeader("MOLECULAR ANALYSIS"),
-          const SizedBox(height: 16),
-          _buildDataCard(context, "TOXIN LEVEL", "0.042 ppm", "LOW", AppColors.primary),
-          const SizedBox(height: 12),
-          _buildDataCard(context, "SENSITIVITY", "HIGH-RES", "OPTIMAL", AppColors.primary),
-          
           const SizedBox(height: 32),
 
-          _buildSectionHeader("DETECTION LOG"),
+          // Summary stats
+          Row(
+            children: [
+              _buildStatChip('${ingredients.length}', 'TOTAL', Colors.white54),
+              const SizedBox(width: 12),
+              _buildStatChip('$safeCount', 'SAFE', AppColors.primary),
+              const SizedBox(width: 12),
+              _buildStatChip('$hazardCount', 'FLAGGED', Colors.redAccent),
+            ],
+          ),
+
+          const SizedBox(height: 32),
+
+          // Ingredient List
+          _buildSectionHeader("INGREDIENT ANALYSIS"),
           const SizedBox(height: 16),
-          _buildLogItem("HEAVY METALS", "NEGATIVE", true),
-          _buildLogItem("PESTICIDES", "NONE DETECTED", true),
-          _buildLogItem("MICRO-PLASTICS", "TRACE < 0.001", false),
+
+          if (ingredients.isEmpty)
+            Center(
+              child: Text(
+                'No ingredients detected.',
+                style: TextStyle(color: Colors.white38, fontSize: 13),
+              ),
+            )
+          else
+            ...ingredients.map((ingredient) => _buildIngredientRow(ingredient)),
 
           const SizedBox(height: 48),
 
@@ -101,6 +132,73 @@ class ResultsView extends StatelessWidget {
     );
   }
 
+  Widget _buildStatChip(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(value,
+              style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(label,
+              style: TextStyle(color: color.withValues(alpha: 0.7), fontSize: 9, letterSpacing: 1.2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIngredientRow(IngredientResult ingredient) {
+    final color = ingredient.isHazardous ? Colors.redAccent : AppColors.primary;
+    final icon = ingredient.isHazardous ? Icons.warning_amber_rounded : Icons.check_circle_outline;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: ingredient.isHazardous ? 0.25 : 0.1)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              ingredient.name,
+              style: TextStyle(
+                color: ingredient.isHazardous ? Colors.white : Colors.white70,
+                fontSize: 13,
+                fontWeight: ingredient.isHazardous ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+          if (ingredient.hazardLabel != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                ingredient.hazardLabel!,
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
@@ -109,67 +207,6 @@ class ResultsView extends StatelessWidget {
         fontSize: 12,
         letterSpacing: 1.5,
         fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-
-  Widget _buildDataCard(BuildContext context, String label, String value, String status, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.labelMedium),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              status,
-              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLogItem(String label, String result, bool isPositive) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          Text(
-            result,
-            style: TextStyle(
-              color: isPositive ? AppColors.primary : Colors.white24,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ),
     );
   }
