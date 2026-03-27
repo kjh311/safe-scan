@@ -9,7 +9,8 @@ import '../widgets/scanner_view.dart';
 import '../widgets/results_view.dart';
 
 class ScannerScreen extends StatefulWidget {
-  const ScannerScreen({super.key});
+  final CameraController? initialController;
+  const ScannerScreen({super.key, this.initialController});
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -32,7 +33,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void initState() {
     super.initState();
-    _setupCameras();
+    if (widget.initialController != null) {
+      _nativeController = widget.initialController;
+      _isCameraReady = true;
+      _isInitializing = false;
+    } else {
+      _setupCameras();
+    }
   }
 
   Future<void> _setupCameras() async {

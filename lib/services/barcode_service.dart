@@ -91,11 +91,11 @@ class BarcodeService {
         final detected = DetectedBarcode(
           rawValue: barcode.rawValue ?? '',
           format: barcode.format,
-          boundingBox: barcode.boundingBox ?? Rect.zero,
-          cornerPoints: barcode.cornerPoints?.isNotEmpty == true
+          boundingBox: barcode.boundingBox,
+          cornerPoints: barcode.cornerPoints.isNotEmpty
               ? Point<double>(
-                  barcode.cornerPoints!.first.x.toDouble(),
-                  barcode.cornerPoints!.first.y.toDouble(),
+                  barcode.cornerPoints.first.x.toDouble(),
+                  barcode.cornerPoints.first.y.toDouble(),
                 )
               : const Point(0.0, 0.0),
         );
