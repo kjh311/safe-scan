@@ -10,7 +10,7 @@ import 'viewfinder_overlay.dart';
 
 class ScannerView extends StatefulWidget {
   final VoidCallback onScanComplete;
-  final Function(List<IngredientResult>) onResult;
+  final Function(List<String>) onResult;
   final CameraController? controller;
   final bool isInitializing;
   final bool isCameraReady;
@@ -89,9 +89,8 @@ class _ScannerViewState extends State<ScannerView> {
           final product = await BarcodeService().fetchProduct(barcode.rawValue!);
           
           if (product != null && product.ingredients.isNotEmpty && mounted) {
-            // 3. Classify ingredients and navigate (via callback)
-            final results = OcrService().classifyIngredients(product.ingredients);
-            widget.onResult(results);
+            // 3. Navigate (via callback)
+            widget.onResult(product.ingredients);
           }
         }
       }

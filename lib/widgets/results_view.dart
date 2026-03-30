@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../services/ocr_service.dart';
+import '../models/analyzed_ingredient.dart';
 import '../theme/app_theme.dart';
 
 class ResultsView extends StatelessWidget {
   final VoidCallback onReset;
-  final List<IngredientResult> ingredients;
+  final List<AnalyzedIngredient> ingredients;
 
   const ResultsView({
     super.key,
@@ -14,14 +14,14 @@ class ResultsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hazardCount = ingredients.where((i) => i.isHazardous).length;
-    final safeCount = ingredients.length - hazardCount;
+    final bannedCount = ingredients.where((i) => i.isBanned).length;
+    final safeCount = ingredients.length - bannedCount;
     final safePercent = ingredients.isEmpty
         ? 100
         : ((safeCount / ingredients.length) * 100).round();
 
-    final overallColor = hazardCount == 0 ? AppColors.primary : Colors.redAccent;
-    final overallLabel = hazardCount == 0 ? 'SAFE' : 'HAZARD DETECTED';
+    final overallColor = bannedCount == 0 ? AppColors.primary : Colors.redAccent;
+    final overallLabel = bannedCount == 0 ? 'SAFE' : 'BANNED DETECTED';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 80, 24, 150),
@@ -85,7 +85,7 @@ class ResultsView extends StatelessWidget {
               const SizedBox(width: 12),
               _buildStatChip('$safeCount', 'SAFE', AppColors.primary),
               const SizedBox(width: 12),
-              _buildStatChip('$hazardCount', 'FLAGGED', Colors.redAccent),
+              _buildStatChip('$bannedCount', 'BANNED', Colors.redAccent),
             ],
           ),
 
@@ -96,7 +96,7 @@ class ResultsView extends StatelessWidget {
           const SizedBox(height: 16),
 
           if (ingredients.isEmpty)
-            Center(
+            const Center(
               child: Text(
                 'No ingredients detected.',
                 style: TextStyle(color: Colors.white38, fontSize: 13),
@@ -151,33 +151,38 @@ class ResultsView extends StatelessWidget {
     );
   }
 
-  Widget _buildIngredientRow(IngredientResult ingredient) {
-    final color = ingredient.isHazardous ? Colors.redAccent : AppColors.primary;
-    final icon = ingredient.isHazardous ? Icons.warning_amber_rounded : Icons.check_circle_outline;
+  Widget _buildIngredientRow(AnalyzedIngredient ingredient) {
+    // Requirement logic: Red (Banned) vs Black (Safe)
+    final textColor = ingredient.isBanned ? Colors.redAccent : Colors.black;
+    // To make Black text visible in a dark theme, we use a light background for the row
+    final bgColor = ingredient.isBanned 
+        ? Colors.redAccent.withValues(alpha: 0.1) 
+        : Colors.white.withValues(alpha: 0.9);
+    final icon = ingredient.isBanned ? Icons.warning_amber_rounded : Icons.check_circle_outline;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
+        color: bgColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: ingredient.isHazardous ? 0.25 : 0.1)),
+        border: Border.all(color: ingredient.isBanned ? Colors.redAccent.withValues(alpha: 0.3) : Colors.white24),
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 18),
+          Icon(icon, color: textColor, size: 18),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              ingredient.name,
+              ingredient.originalName,
               style: TextStyle(
-                color: ingredient.isHazardous ? Colors.white : Colors.white70,
-                fontSize: 13,
-                fontWeight: ingredient.isHazardous ? FontWeight.bold : FontWeight.normal,
+                color: textColor,
+                fontSize: 14,
+                fontWeight: ingredient.isBanned ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ),
-          if (ingredient.hazardLabel != null)
+          if (ingredient.isBanned && ingredient.metadata != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -185,7 +190,7 @@ class ResultsView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                ingredient.hazardLabel!,
+                ingredient.metadata!['severity'].toString().toUpperCase(),
                 style: const TextStyle(
                   color: Colors.redAccent,
                   fontSize: 9,

@@ -2,8 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../services/ocr_service.dart';
+import '../services/comparison_service.dart';
 import '../services/barcode_service.dart';
+import '../services/ocr_service.dart';
+import '../models/analyzed_ingredient.dart';
 import '../theme/app_theme.dart';
 import '../widgets/scanner_view.dart';
 import '../widgets/results_view.dart';
@@ -24,7 +26,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
   CameraController? _nativeController;
   final OcrService _ocrService = OcrService();
   final BarcodeService _barcodeService = BarcodeService();
-  List<IngredientResult> _ingredientResults = [];
+  final ComparisonService _comparisonService = ComparisonService();
+  List<AnalyzedIngredient> _ingredientResults = [];
   
   // Barcode detection state
   DetectedBarcode? _detectedBarcode;
@@ -108,8 +111,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
         // Fetch product data from OpenFoodFacts
         final product = await _barcodeService.fetchProduct(barcode.rawValue);
         if (mounted && product != null && product.ingredients.isNotEmpty) {
-          // Classify ingredients with OCR service
-          final results = _ocrService.classifyIngredients(product.ingredients);
+          // Analyze ingredients with Comparison Service (Supabase sync)
+          final results = await _comparisonService.analyzeIngredients(product.ingredients);
           setState(() {
             _ingredientResults = results;
             _showResults = true;
@@ -132,12 +135,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _onSnap() async {
     if (!_isCameraReady || _nativeController == null || !_nativeController!.value.isInitialized) {
       debugPrint('[FALLBACK] Camera not ready — using mock data.');
-      final rawResults = _ocrService.getMockResults();
-      final results = rawResults.map((m) => IngredientResult(
-        name: m['name'] as String,
-        isHazardous: m['severity'] != 'green',
-        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
-      )).toList();
+      final mockData = ['Organic Vegetable Oil', 'Red 40', 'Water', 'Sugar'];
+      final results = await _comparisonService.analyzeIngredients(mockData);
       
       setState(() {
         _ingredientResults = results;
@@ -150,19 +149,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
       final image = await _nativeController!.takePicture();
       debugPrint('Frame captured: ${image.path}');
       
-      List<Map<String, dynamic>> rawResults;
+      List<String> ingredients;
       if (kIsWeb) {
         debugPrint('[WEB] OCR not yet implemented — using mock data.');
-        rawResults = _ocrService.getMockResults();
+        ingredients = ['Organic Vegetable Oil', 'Titanium Dioxide', 'Yellow 5', 'Water'];
       } else {
-        rawResults = await _ocrService.processImage(image.path);
+        ingredients = await _ocrService.scanIngredients(image);
       }
 
-      final results = rawResults.map((m) => IngredientResult(
-        name: m['name'] as String,
-        isHazardous: m['severity'] != 'green',
-        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
-      )).toList();
+      final results = await _comparisonService.analyzeIngredients(ingredients);
 
       setState(() {
         _ingredientResults = results;
@@ -170,12 +165,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
       });
     } on CameraException catch (e) {
       debugPrint('Capture error: ${e.code} — ${e.description}');
-      final rawResults = _ocrService.getMockResults();
-      final results = rawResults.map((m) => IngredientResult(
-        name: m['name'] as String,
-        isHazardous: m['severity'] != 'green',
-        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
-      )).toList();
+      final mockData = ['Organic Vegetable Oil', 'BHT', 'BHA'];
+      final results = await _comparisonService.analyzeIngredients(mockData);
       
       setState(() {
         _ingredientResults = results;
@@ -183,12 +174,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
       });
     } catch (e) {
       debugPrint('Snap error: $e');
-      final rawResults = _ocrService.getMockResults();
-      final results = rawResults.map((m) => IngredientResult(
-        name: m['name'] as String,
-        isHazardous: m['severity'] != 'green',
-        hazardLabel: m['severity'] != 'green' ? m['reason'] as String : null,
-      )).toList();
+      final mockData = ['Vegetable Oil', 'Corn Syrup', 'Red 40'];
+      final results = await _comparisonService.analyzeIngredients(mockData);
       
       setState(() {
         _ingredientResults = results;
@@ -217,11 +204,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 : ScannerView(
                     key: const ValueKey('scanner'),
                     onScanComplete: _onSnap,
-                    onResult: (results) {
-                      setState(() {
-                        _ingredientResults = results;
-                        _showResults = true;
-                      });
+                    onResult: (names) async {
+                      final results = await _comparisonService.analyzeIngredients(names);
+                      if (mounted) {
+                        setState(() {
+                          _ingredientResults = results;
+                          _showResults = true;
+                        });
+                      }
                     },
                     controller: _nativeController,
                     isInitializing: _isInitializing,

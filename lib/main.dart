@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'theme/app_theme.dart';
 import 'screens/scanner_screen.dart';
+import 'screens/login_screen.dart';
 import 'services/ocr_service.dart';
 import 'services/barcode_service.dart';
 
@@ -60,11 +61,11 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('Hardware initialization error: $e');
   } finally {
-    // Call remove() only after camera has successfully initialized 
+    // Call remove() only after camera has successfully initialized
     // or the catch block is triggered.
     FlutterNativeSplash.remove();
   }
-  
+
   // Ensure status bar is transparent
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -72,22 +73,31 @@ Future<void> main() async {
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   runApp(SafeScanApp(initialController: initialController));
 }
 
 class SafeScanApp extends StatelessWidget {
   final CameraController? initialController;
-  
+
   const SafeScanApp({super.key, this.initialController});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Safe Scan',
+      title: 'Verify Safe',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: ScannerScreen(initialController: initialController),
+      home: StreamBuilder<AuthState>(
+        stream: Supabase.instance.client.auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          final session = snapshot.data?.session;
+          if (session != null) {
+            return ScannerScreen(initialController: initialController);
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
