@@ -13,6 +13,19 @@ class ResultsView extends StatelessWidget {
     required this.ingredients,
   });
 
+  Future<void> _launchSourceUrl(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        debugPrint('Could not launch $urlString');
+      }
+    } catch (e) {
+      debugPrint('Error launching URL: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bannedCount = ingredients.where((i) => i.isBanned).length;
@@ -244,7 +257,6 @@ class ResultsView extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              // Moved Reason for Flagging here to be visible outside accordion children
               Padding(
                 padding: const EdgeInsets.only(left: 32),
                 child: Column(
@@ -282,40 +294,16 @@ class ResultsView extends StatelessWidget {
                   const Divider(height: 1, color: Colors.white10),
                   const SizedBox(height: 16),
                   if (ingredient.documentationUrl != null)
-                    InkWell(
-                      onTap: () async {
-                        final url = Uri.parse(ingredient.documentationUrl!);
-                        try {
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                          } else {
-                            debugPrint('Could not launch ${ingredient.documentationUrl}');
-                          }
-                        } catch (e) {
-                          debugPrint('Error launching URL: $e');
-                        }
-                      },
-                      child: Container(
+                    TextButton.icon(
+                      onPressed: () => _launchSourceUrl(ingredient.documentationUrl!),
+                      icon: const Icon(Icons.open_in_browser, size: 18),
+                      label: const Text("Open Source Documentation"),
+                      style: TextButton.styleFrom(
+                        foregroundColor: severityColor,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: severityColor.withValues(alpha: 0.15),
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: severityColor.withValues(alpha: 0.4)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.school_outlined, color: severityColor, size: 16),
-                            const SizedBox(width: 10),
-                            Text(
-                              "Source documentation",
-                              style: TextStyle(
-                                color: severityColor,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                          side: BorderSide(color: severityColor.withValues(alpha: 0.4)),
                         ),
                       ),
                     ),
